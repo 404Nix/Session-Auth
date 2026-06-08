@@ -1,6 +1,7 @@
 import express from "express";
 import conf from "./config/config.js";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import morgan from "morgan";
 import userRoutes from "./routes/user.routes.js";
 
@@ -22,6 +23,7 @@ app.use(
     }),
 );
 
+app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

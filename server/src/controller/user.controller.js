@@ -1,45 +1,139 @@
 import userModel from "../models/user.model.js";
-import { generateAccessToken } from "../utils/tokens.js";
+import { generateAccessToken, generateRefreshToken } from "../utils/tokens.js";
+import jwt from "jsonwebtoken";
+import conf from "../config/config.js";
 
 const registerUser = async (req, res) => {
-    const { username, email, password } = req.body;
+    try {
+        const { username, email, password } = req.body;
+        if (!username || !email || !password) {
+            return res.status(400).json({ message: "All fields are required" });
+        }
+        const existingUser = await userModel.findOne({ email });
+        if (existingUser) {
+            return res.status(400).json({ message: "User already exists" });
+        }
+        const newUser = await userModel.create({
+            name: username,
+            email,
+            password,
+        });
 
-    if (!username || !email || !password) {
-        return res.status(400).json({ message: "All fields are required" });
+        const refreshToken = generateRefreshToken(newUser._id);
+        const accessToken = generateAccessToken(newUser._id);
+
+        res.cookie("refreshToken", refreshToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "strict",
+            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        });
+
+        res.status(201).json({
+            message: "User registered successfully",
+            user: {
+                username: newUser.name,
+                email: newUser.email,
+            },
+            accessToken,
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Internal server error" });
     }
-
-    const existingUser = await userModel.findOne({ email });
-    if (existingUser) {
-        return res.status(400).json({ message: "User already exists" });
-    }
-
-    const newUser = await userModel.create({
-        name: username,
-        email,
-        password,
-    });
-
-    const token = generateAccessToken(newUser._id);
-
-    res.status(201).json({
-        message: "User registered successfully",
-        user: {
-            username: newUser.name,
-            email: newUser.email,
-        },
-        token,
-    });
 };
+
 const loginUser = async (req, res) => {
-    res.json({ message: "Login route" });
+    try {
+        const { email, password } = req.body;
+        if (!email || !password) {
+            return res
+                .status(400)
+                .json({ message: "Email and password are required" });
+        }
+        const user = await userModel.findOne({ email });
+        if (!user) {
+            return res
+                .status(400)
+                .json({ message: "Invalid email or password" });
+        }
+        const isMatch = await user.comparePassword(password);
+        if (!isMatch) {
+            return res
+                .status(400)
+                .json({ message: "Invalid email or password" });
+        }
+
+        const refreshToken = generateRefreshToken(user._id);
+        const accessToken = generateAccessToken(user._id);
+
+        res.cookie("refreshToken", refreshToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "strict",
+            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        });
+
+        res.status(200).json({
+            message: "User logged in successfully",
+            user: {
+                username: user.name,
+                email: user.email,
+            },
+            accessToken,
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Internal server error" });
+    }
 };
 
 const refreshToken = async (req, res) => {
-    res.json({ message: "Refresh token route" });
+    try {
+        const token = req.cookies.refreshToken;
+        if (!token) {
+            return res
+                .status(401)
+                .json({ message: "No refresh token provided" });
+        }
+
+        const decoded = jwt.verify(token, conf.REFRESH_TOKEN_SECRET);
+
+        const newRefreshToken = generateRefreshToken(decoded._id);
+        res.cookie("refreshToken", newRefreshToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "strict",
+            maxAge: 7 * 24 * 60 * 60 * 1000,
+        });
+
+        const newAccessToken = generateAccessToken(decoded._id);
+        res.status(200).json({
+            message: "Access token refreshed successfully",
+            accessToken: newAccessToken,
+        });
+    } catch (error) {
+        if (error.name === "TokenExpiredError") {
+            return res.status(401).json({ message: "Refresh token expired" });
+        }
+        console.error(error);
+        res.status(500).json({ message: "Internal server error", error: error.message });
+    }
 };
 
 const logoutUser = async (req, res) => {
     res.json({ message: "Logout route" });
 };
 
-export { registerUser, loginUser, refreshToken, logoutUser };
+const getUser = async (req, res) => {
+    try {
+        res.status(200).json({
+            message: "User data retrieved successfully",
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+export { registerUser, loginUser, refreshToken, logoutUser, getUser };
