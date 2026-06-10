@@ -2,6 +2,15 @@ import userModel from "../models/user.model.js";
 import { generateAccessToken, generateRefreshToken } from "../utils/tokens.js";
 import jwt from "jsonwebtoken";
 import conf from "../config/config.js";
+import sessionModel from "../models/session.model.js";
+import hashFunction from "../utils/hash.js";
+
+const cookieOptions = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+};
 
 const registerUser = async (req, res) => {
     try {
@@ -20,20 +29,26 @@ const registerUser = async (req, res) => {
         });
 
         const refreshToken = generateRefreshToken(newUser._id);
-        const accessToken = generateAccessToken(newUser._id);
 
-        res.cookie("refreshToken", refreshToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "strict",
-            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        const hashRefreshToken = hashFunction(refreshToken);
+
+        const session = await sessionModel.create({
+            user: newUser._id,
+            userAgent: req.headers["user-agent"],
+            ip: req.ip,
+            refreshToken: hashRefreshToken,
         });
+
+        const accessToken = generateAccessToken(newUser._id, session._id);
+
+        res.cookie("refreshToken", refreshToken, cookieOptions);
 
         res.status(201).json({
             message: "User registered successfully",
             user: {
                 username: newUser.name,
                 email: newUser.email,
+                updatedAt: newUser.updatedAt,
             },
             accessToken,
         });
@@ -67,18 +82,14 @@ const loginUser = async (req, res) => {
         const refreshToken = generateRefreshToken(user._id);
         const accessToken = generateAccessToken(user._id);
 
-        res.cookie("refreshToken", refreshToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "strict",
-            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-        });
+        res.cookie("refreshToken", refreshToken, cookieOptions);
 
         res.status(200).json({
             message: "User logged in successfully",
             user: {
                 username: user.name,
                 email: user.email,
+                updatedAt: user.updatedAt,
             },
             accessToken,
         });
@@ -100,12 +111,7 @@ const refreshToken = async (req, res) => {
         const decoded = jwt.verify(token, conf.REFRESH_TOKEN_SECRET);
 
         const newRefreshToken = generateRefreshToken(decoded._id);
-        res.cookie("refreshToken", newRefreshToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "strict",
-            maxAge: 7 * 24 * 60 * 60 * 1000,
-        });
+        res.cookie("refreshToken", newRefreshToken, cookieOptions);
 
         const newAccessToken = generateAccessToken(decoded._id);
         res.status(200).json({
@@ -117,7 +123,10 @@ const refreshToken = async (req, res) => {
             return res.status(401).json({ message: "Refresh token expired" });
         }
         console.error(error);
-        res.status(500).json({ message: "Internal server error", error: error.message });
+        res.status(500).json({
+            message: "Internal server error",
+            error: error.message,
+        });
     }
 };
 
