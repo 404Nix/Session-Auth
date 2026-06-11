@@ -52,9 +52,12 @@ const registerUser = async (req, res) => {
             },
             accessToken,
         });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: "Internal server error" });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            message: "Internal server error",
+            error: error.message,
+        });
     }
 };
 
@@ -80,9 +83,19 @@ const loginUser = async (req, res) => {
         }
 
         const refreshToken = generateRefreshToken(user._id);
-        const accessToken = generateAccessToken(user._id);
+
+        const hashRefreshToken = hashFunction(refreshToken);
+
+        const session = await sessionModel.create({
+            user: user._id,
+            userAgent: req.headers["user-agent"],
+            ip: req.ip,
+            refreshToken: hashRefreshToken,
+        });
 
         res.cookie("refreshToken", refreshToken, cookieOptions);
+
+        const accessToken = generateAccessToken(user._id, session._id);
 
         res.status(200).json({
             message: "User logged in successfully",
@@ -93,9 +106,12 @@ const loginUser = async (req, res) => {
             },
             accessToken,
         });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: "Internal server error" });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            message: "Internal server error",
+            error: err.message,
+        });
     }
 };
 
@@ -110,7 +126,22 @@ const refreshToken = async (req, res) => {
 
         const decoded = jwt.verify(token, conf.REFRESH_TOKEN_SECRET);
 
+        const hashRefreshToken = hashFunction(token);
+        const session = await sessionModel.findOne({
+            refreshToken: hashRefreshToken,
+            revoked: false,
+        });
+
+        if (!session) {
+            res.status(401).json({
+                message: "Session Invalid Or Unauthorized User Token",
+            });
+        }
+
         const newRefreshToken = generateRefreshToken(decoded._id);
+        const hashNewRefreshToken = hashFunction(newRefreshToken);
+        session.refreshToken = hashNewRefreshToken;
+        await session.save();
         res.cookie("refreshToken", newRefreshToken, cookieOptions);
 
         const newAccessToken = generateAccessToken(decoded._id);
