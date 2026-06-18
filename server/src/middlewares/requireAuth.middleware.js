@@ -1,4 +1,5 @@
 import conf from "../config/config.js";
+import jwt from "jsonwebtoken";
 
 const requireAuth = (req, res, next) => {
     const authHeader = req.headers.authorization;
@@ -21,10 +22,11 @@ const requireAuth = (req, res, next) => {
     } catch (error) {
         if (error.name === "TokenExpiredError") {
             return res.status(401).json({
-                message: "Unauthorized: Token expired",
+                message: "Unauthorized: Access Token expired",
             });
         }
 
+        console.error(error);
         return res.status(401).json({
             message: "Unauthorized: Invalid token",
         });

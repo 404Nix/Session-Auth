@@ -162,7 +162,45 @@ const refreshToken = async (req, res) => {
 };
 
 const logoutUser = async (req, res) => {
-    res.json({ message: "Logout route" });
+    try {
+        const { id: userId } = req.user;
+        const refreshToken = req.cookies.refreshToken;
+
+        if (!refreshToken) {
+            return res.status(401).json({ message: "Unauthorized" });
+        }
+
+        const hashRefreshToken = hashFunction(refreshToken);
+
+        const decoded = jwt.verify(refreshToken, conf.REFRESH_TOKEN_SECRET);
+        const session = await sessionModel.findOne({
+            refreshToken: hashRefreshToken,
+            revoked: false,
+        });
+
+        if (!session) {
+            res.status(401).json({
+                message: "Session invalid or expired",
+            });
+        }
+
+        session.revoked = true;
+        await session.save();
+
+        res.clearCookie("refreshToken", cookieOptions);
+
+        res.status(200).json({
+            message: "Logged Out successfully!",
+        });
+    } catch (error) {
+        if (error.name === "TokenExpiredError") {
+            return res.status(401).json({ message: "Refresh token expired" });
+        }
+        console.error(error);
+        res.status(500).json({
+            message: "Internal server error",
+        });
+    }
 };
 
 const getUser = async (req, res) => {
