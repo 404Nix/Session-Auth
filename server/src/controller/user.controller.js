@@ -39,7 +39,7 @@ const registerUser = async (req, res) => {
             refreshToken: hashRefreshToken,
         });
 
-        const accessToken = generateAccessToken(newUser._id, session._id);
+        const accessToken = generateAccessToken(session.user, session._id);
 
         res.cookie("refreshToken", refreshToken, cookieOptions);
 
@@ -65,19 +65,19 @@ const loginUser = async (req, res) => {
         const { email, password } = req.body;
         if (!email || !password) {
             return res
-                .status(400)
+                .status(401)
                 .json({ message: "Email and password are required" });
         }
-        const user = await userModel.findOne({ email });
+        const user = await userModel.findOne({ email }).select("+password");
         if (!user) {
             return res
-                .status(400)
+                .status(401)
                 .json({ message: "Invalid email or password" });
         }
         const isMatch = await user.comparePassword(password);
         if (!isMatch) {
             return res
-                .status(400)
+                .status(401)
                 .json({ message: "Invalid email or password" });
         }
 
@@ -94,7 +94,7 @@ const loginUser = async (req, res) => {
 
         res.cookie("refreshToken", refreshToken, cookieOptions);
 
-        const accessToken = generateAccessToken(user._id, session._id);
+        const accessToken = generateAccessToken(session.user, session._id);
 
         res.status(200).json({
             message: "User logged in successfully",
@@ -131,18 +131,18 @@ const refreshToken = async (req, res) => {
         });
 
         if (!session) {
-            res.status(401).json({
+            return res.status(401).json({
                 message: "Session Invalid Or Unauthorized User Token",
             });
         }
 
-        const newRefreshToken = generateRefreshToken(decoded._id);
+        const newRefreshToken = generateRefreshToken(decoded.id);
         const hashNewRefreshToken = hashFunction(newRefreshToken);
         session.refreshToken = hashNewRefreshToken;
         await session.save();
         res.cookie("refreshToken", newRefreshToken, cookieOptions);
 
-        const newAccessToken = generateAccessToken(decoded._id);
+        const newAccessToken = generateAccessToken(session.user, session._id);
         res.status(200).json({
             message: "Access token refreshed successfully",
             accessToken: newAccessToken,

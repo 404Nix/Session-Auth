@@ -1,7 +1,7 @@
 import jwt from "jsonwebtoken";
 import conf from "../config/config.js";
 
-export const generateAccessToken = (userId, sessionId='12345') => {
+export const generateAccessToken = (userId, sessionId) => {
     const payload = {
         id: userId,
         session: sessionId,
