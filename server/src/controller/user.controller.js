@@ -56,7 +56,6 @@ const registerUser = async (req, res) => {
         console.error(error);
         res.status(500).json({
             message: "Internal server error",
-            error: error.message,
         });
     }
 };
@@ -110,7 +109,6 @@ const loginUser = async (req, res) => {
         console.error(error);
         res.status(500).json({
             message: "Internal server error",
-            error: err.message,
         });
     }
 };
@@ -150,20 +148,13 @@ const refreshToken = async (req, res) => {
             accessToken: newAccessToken,
         });
     } catch (error) {
-        if (error.name === "TokenExpiredError") {
-            return res.status(401).json({ message: "Refresh token expired" });
-        }
         console.error(error);
-        res.status(500).json({
-            message: "Internal server error",
-            error: error.message,
-        });
+        res.status(401).json({ message: "Invalid or expired refresh token" });
     }
 };
 
 const logoutUser = async (req, res) => {
     try {
-        const { id: userId } = req.user;
         const refreshToken = req.cookies.refreshToken;
 
         if (!refreshToken) {
@@ -193,20 +184,49 @@ const logoutUser = async (req, res) => {
             message: "Logged Out successfully!",
         });
     } catch (error) {
-        if (error.name === "TokenExpiredError") {
-            return res.status(401).json({ message: "Refresh token expired" });
-        }
         console.error(error);
-        res.status(500).json({
-            message: "Internal server error",
+        res.status(401).json({ message: "Invalid or expired refresh token" });
+    }
+};
+
+const logoutAll = async (req, res) => {
+    try {
+        const { id: userId } = req.user;
+
+        await sessionModel.updateMany(
+            {
+                user: userId,
+                revoked: false,
+            },
+            {
+                revoked: true,
+            },
+        );
+
+        res.clearCookie("refreshToken", cookieOptions);
+
+        res.status(200).json({
+            message: "Logged Out from All Devices Successfully!",
         });
+    } catch (error) {
+        console.error(error);
+        res.status(401).json({ message: "Invalid or expired refresh token" });
     }
 };
 
 const getUser = async (req, res) => {
     try {
+        const { id: userId } = req.user;
+        const user = await userModel
+            .findById(userId)
+            .select("name email updatedAt");
+        if (!user) {
+            return res.status(404).json({ message: "User Not Found" });
+        }
+
         res.status(200).json({
-            message: "User data retrieved successfully",
+            message: "User data fetched!",
+            user,
         });
     } catch (error) {
         console.error(error);
@@ -214,4 +234,11 @@ const getUser = async (req, res) => {
     }
 };
 
-export { registerUser, loginUser, refreshToken, logoutUser, getUser };
+export {
+    registerUser,
+    loginUser,
+    refreshToken,
+    logoutUser,
+    getUser,
+    logoutAll,
+};
