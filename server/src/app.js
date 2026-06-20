@@ -30,7 +30,7 @@ app.use(express.urlencoded({ extended: true }));
 // routes
 app.use("/api/auth", userRoutes);
 
-app.get('/health', (req, res) => {
+app.get('/api/health', (req, res) => {
     res.status(200).json({ message: 'Server is healthy' });
 })
 
